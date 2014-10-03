@@ -1,83 +1,111 @@
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
 public class Chip8
 {
-	short opcode;
+	final char[] FONT_SET = {
+		0xF0, 0x90, 0x90, 0x90, 0xF0,
+		0x20, 0x60, 0x20, 0x20, 0x70,
+		0xF0, 0x10, 0xF0, 0x80, 0xF0,
+		0xF0, 0x10, 0xF0, 0x10, 0xF0,
+		0x90, 0x90, 0xF0, 0x10, 0x10,
+		0xF0, 0x80, 0xF0, 0x10, 0xF0,
+		0xF0, 0x80, 0xF0, 0x90, 0xF0,
+		0xF0, 0x10, 0x20, 0x40, 0x40,
+		0xF0, 0x90, 0xF0, 0x90, 0xF0,
+		0xF0, 0x90, 0xF0, 0x10, 0xF0,
+		0xF0, 0x90, 0xF0, 0x90, 0x90,
+		0xE0, 0x90, 0xE0, 0x90, 0xE0,
+		0xF0, 0x80, 0x80, 0x80, 0xF0,
+		0xE0, 0x90, 0x90, 0x90, 0xE0,
+		0xF0, 0x80, 0xF0, 0x80, 0xF0,
+		0xF0, 0x80, 0xF0, 0x80, 0x80
+	};
 	
-	byte[] memory = new byte[0x1000];
+	char[] memory = new char[0x1000];
+	char[] V = new char[0x10];
+	char[] stack = new char[0x10];
+	byte[] gfx = new byte[64 * 32];
+	byte[] keys = new byte[0x10];
 	
-	byte[] V = new byte[0x10];
-	short I;
-	short pc;
+	byte sp;
+	char I;
+	char pc;
+	char opcode;
+	char delayTimer;
+	char soundTimer;
 	
-	byte[] gfx = new byte[0x40 * 0x20];
-	byte delay_timer, sound_timer;
+	public boolean drawFlag;
 	
-	short[] stack = new short[0x10];
-	short sp;
-	
-	byte[] key = new byte[0x10];
-
-	boolean drawFlag;
-
-	public void intialize()
+	public void initialize()
 	{
+		sp = 0;
+		I = 0x200;
 		pc = 0x200;
-		opcode = 0x0;
-		I = 0x0;
-		sp = 0x0;		
+		delayTimer = 0;
+		soundTimer = 0;
+		
+		drawFlag = true;
+		
+		for (int i = 0; i < FONT_SET.length; i++)
+		{
+			memory[0x050 + i] = FONT_SET[i];
+		}
 	}
-
-	public void loadGame(String string)
+	
+	public void loadGame(String file)
 	{
+		byte[] game = null;
 		try
 		{
-			byte[] file = Files.readAllBytes(Paths.get(string));
-			for (int i = 0x0; i < file.length; i++)
-			{
-				memory[i + 0x200] = file[i];
-			}
+			game = Files.readAllBytes(Paths.get(file));
 		}
-		catch (Exception e)
+		catch (IOException e)
 		{
 			e.printStackTrace();
 		}
+		for (int i = 0; i < game.length; i++) {
+			memory[0x200 + i] = (char) (game[i] & 0xFF);
+		}
 	}
-
+	
 	public void tick()
 	{
-		opcode = (short)(memory[b(pc)] << 8 | memory[b(pc) + 1]);
+		opcode = (char)((memory[pc] << 8) | (memory[pc + 1]));
 		
-		byte X = (byte)(opcode & 0x0F00 >> 8);
-		byte Y = (byte)(opcode & 0x00F0 >> 4);
-		short NNN = (short)(opcode & 0x0FFF);
-		byte NN = (byte)(opcode & 0x00FF);
-		byte N = (byte)(opcode & 0x000F);
+		char NNN = (char) (opcode & 0x0FFF);
+		char NN = (char) (opcode & 0x00FF);
+		char N = (char) (opcode & 0x000F);
+		char X = (char) ((opcode & 0x0F00) >> 8);
+		char Y = (char) ((opcode & 0x00F0) >> 4);
 		
-		boolean jump = false;
+		boolean incrementPC = true;
 		
 		switch (opcode & 0xF000)
 		{
 		case 0x0000:
-			switch (opcode & 0x000F) {
-			case 0x0000:
-				
-			break;
+			switch (opcode & 0x000F)
+			{
 			case 0x000E:
-				
+				sp--;
+				pc = stack[sp];
+			break;
+			case 0x0000:
+				gfx = new byte[64 * 32];
+				drawFlag = true;
 			break;
 			}
 		break;
 		case 0x1000:
-			pc = (short)b(NNN);
-			jump = true;
+			pc = NNN;
+			incrementPC = false;
 		break;
 		case 0x2000:
 			stack[sp] = pc;
-			++sp;
+			sp++;
 			pc = NNN;
-			jump = true;
+			incrementPC = false;
 		break;
 		case 0x3000:
 			if (V[X] == NN) pc += 2;
@@ -93,6 +121,7 @@ public class Chip8
 		break;
 		case 0x7000:
 			V[X] += NN;
+			V[X] %= 256;
 		break;
 		case 0x8000:
 			switch (opcode & 0x000F)
@@ -101,141 +130,148 @@ public class Chip8
 				V[X] = V[Y];
 			break;
 			case 0x0001:
-				V[X] = (byte)(V[X] | V[Y]);
+				V[X] = (char) (V[X] | V[Y]);
+				V[X] %= 256;
 			break;
 			case 0x0002:
-				V[X] = (byte)(V[X] & V[Y]);
+				V[X] = (char) (V[X] & V[Y]);
+				V[X] %= 256;
 			break;
 			case 0x0003:
-				V[X] = (byte)(V[X] ^ V[Y]);
+				V[X] = (char) (V[X] ^ V[Y]);
+				V[X] %= 256;
 			break;
 			case 0x0004:
-				if (V[Y] > (byte)(0xFF - V[X]))
-				{
-					V[0xF] = 0x01;
-				}
-				else
-				{
-					V[0xF] = 0x00;
-				}
+				V[0xF] = 0;
+				if (V[Y] > 0xFF - V[X]) V[0xF] = 1;
 				V[X] += V[Y];
+				V[X] %= 256;
 			break;
 			case 0x0005:
-				if (V[Y] > V[X])
-				{
-					V[0xF] = 0x00;
-				}
-				else
-				{
-					V[0xF] = 0x01;
-				}
+				V[0xF] = 1;
+				if (V[Y] > V[X]) V[0xF] = 0;
 				V[X] -= V[Y];
+				V[X] %= 256;
 			break;
 			case 0x0006:
-				V[0xF] = (byte)(V[X] & 0x0001);
-				V[X] >>= 0x01;
+				V[0xF] = (char) (V[X] & 0x0001);
+				V[X] >>= 1;
+				V[X] %= 256;
 			break;
 			case 0x0007:
-				if (V[X] > V[Y])
-				{
-					V[0xF] = 0x00;
-				}
-				else
-				{
-					V[0xF] = 0x01;
-				}
-				V[X] = (byte)(V[Y] - V[X]);
+				V[0xF] = 1;
+				if (V[X] > V[Y]) V[0xF] = 0;
+				V[X] = (char) (V[Y] - V[X]);
+				V[X] %= 256;
+			break;
 			case 0x000E:
-				V[0xF] = (byte)(V[X] & 0x8000);
+				V[0xF] = (char) (V[X] >> 15);
 				V[X] <<= 1;
+				V[X] %= 256;
 			break;
 			}
 		break;
-		case 0x0009:
+		case 0x9000:
 			if (V[X] != V[Y]) pc += 2;
 		break;
-		case 0x000A:
+		case 0xA000:
 			I = NNN;
 		break;
-		case 0x000B:
-			pc = (short)(NNN + V[0x0]);
+		case 0xB000:
+			pc = (char) (NNN + V[0]);
+			incrementPC = false;
 		break;
-		case 0x000C:
-			V[X] = (byte)((byte)(Math.random() * 256) & NN);
+		case 0xC000:
+			V[X] = (char)((char)(Math.random() * 256) & NN);
 		break;
-		case 0x000D:
-			V[0xF] = 0x00;
-			for (int y = 0x00; y < N; y++)
+		case 0xD000:
+			V[0xF] = 0;
+			for (int yline = 0; yline < N; yline++)
 			{
-				short pixel = memory[I + y];
-				for (int x = 0x00; x < 0x08; x++)
+				char line = memory[I + yline];
+				for (int xline = 0; xline < 8; xline++)
 				{
-					if ((pixel & (0x80 >> x)) != 0x00)
+					if ((line & (0x80 >> xline)) != 0)
 					{
-						if (gfx[(X + x + ((Y + y) * 0x40))] == 0x01)
+						if (gfx[V[X] + xline + ((V[Y] + yline) * 64)] == 1)
 						{
-							V[0xF] = 0x01;
+							V[0xF] = 1;
 						}
-						gfx[X + x + ((Y + y) * 0x40)] ^= 0x01;
+						gfx[V[X] + xline + ((V[Y] + yline) * 64)] ^= 1;
 					}
 				}
 			}
 			
 			drawFlag = true;
 		break;
-		case 0x000E:
+		case 0xE000:
 			switch (opcode & 0x00FF)
 			{
 			case 0x009E:
-				if (key[V[X]] != 0x00) pc += 2;
+				if (keys[V[X]] == 1) pc += 2;
 			break;
 			case 0x00A1:
-				if (key[V[X]] == 0x00) pc += 2;
+				if (keys[V[X]] != 1) pc += 2;
 			break;
 			}
 		break;
-		case 0x000F:
+		case 0xF000:
 			switch (opcode & 0x00FF)
 			{
 			case 0x0007:
-				V[X] = delay_timer;
+				V[X] = delayTimer;
 			break;
 			case 0x000A:
-				boolean keyPressed = false;
-				for (byte i = 0x00; i < 0x10; i++)
+				boolean keyPress = false;
+				
+				for (int i = 0; i < 0x10; i++)
 				{
-					if (key[i] != 0x0)
+					if (keys[i] == 1)
 					{
-						V[X] = i;
-						keyPressed = true;
+						V[X] = (char)i;
+						keyPress = true;
 					}
 				}
-				if (!keyPressed) jump = true;
+				
+				incrementPC = keyPress;
 			break;
 			case 0x0015:
-				delay_timer = V[X];
+				delayTimer = V[X];
 			break;
 			case 0x0018:
-				sound_timer = V[X];
+				soundTimer = V[X];
 			break;
 			case 0x001E:
 				I += V[X];
+			break;
+			case 0x0029:
+				I = (char) (0x050 + V[X] * 5);
+			break;
+			case 0x0033:
+				memory[I] = (char) (V[X] / 100);
+				memory[I + 1] = (char) ((V[X] / 10) % 10);
+				memory[I + 2] = (char) (V[X] % 10);
+			break;
+			case 0x0055:
+				for (int i = 0; i <= X; i++)
+				{
+					memory[I + i] = V[i];
+				}
+			break;
+			case 0x0065:
+				for (int i = 0; i <= X; i++)
+				{
+					V[i] = memory[I + i];
+				}
+				I += X + 1;
+			break;
 			}
 		break;
 		}
-		if (!jump) pc += 0x02;
-	}
-
-	public void setKeys()
-	{
+		if (incrementPC) pc += 2;
 		
-	}
-	static int b(byte a)
-	{
-		return 0xFF & a;
-	}
-	static int b(short a)
-	{
-		return 0xFF & a;
+		if (delayTimer > 0) delayTimer--;
+		if (soundTimer != 0) System.out.println("BEEP!");
+		if (soundTimer > 0) soundTimer--;
 	}
 }
