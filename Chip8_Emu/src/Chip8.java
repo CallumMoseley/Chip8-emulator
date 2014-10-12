@@ -37,6 +37,7 @@ public class Chip8
 	char soundTimer;
 	
 	public boolean drawFlag;
+	public boolean beepFlag;
 	
 	public void initialize()
 	{
@@ -193,11 +194,17 @@ public class Chip8
 				{
 					if ((line & (0x80 >> xline)) != 0)
 					{
-						if (gfx[V[X] + xline + ((V[Y] + yline) * 64)] == 1)
+						try
 						{
-							V[0xF] = 1;
+							if (gfx[V[X] + xline + ((V[Y] + yline) * 64)] == 1)
+							{
+								V[0xF] = 1;
+							}
+							gfx[V[X] + xline + ((V[Y] + yline) * 64)] ^= 1;
 						}
-						gfx[V[X] + xline + ((V[Y] + yline) * 64)] ^= 1;
+						catch (Exception e)
+						{
+						}
 					}
 				}
 			}
@@ -271,7 +278,7 @@ public class Chip8
 		if (incrementPC) pc += 2;
 		
 		if (delayTimer > 0) delayTimer--;
-		if (soundTimer != 0) System.out.println("BEEP!");
+		if (soundTimer != 0) beepFlag = true;
 		if (soundTimer > 0) soundTimer--;
 	}
 }

@@ -1,21 +1,27 @@
-import java.awt.Canvas;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.image.BufferedImage;
+import java.io.File;
 
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
+import javax.sound.sampled.DataLine;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 public class Chip8_Emu
 {
+	final static int FPS = 60;
+	final static int PIXEL_SIZE = 8;
+	final static String GAME = "Pong (alt)";
+	
 	static Chip8 chip8 = null; 
 	public static void main(String[] args)
 	{
-		final int FPS = 300;
-		final String GAME = "Cave";
-		
 		JFrame game = new JFrame("Chip8");
 		game.setResizable(false);
 		game.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -137,12 +143,30 @@ public class Chip8_Emu
 				}
 			}
 		});
-		JPanel panel = (JPanel) game.getContentPane();
-		panel.setPreferredSize(new Dimension(64 * 8, 32 * 8));
+		JPanel cpanel = (JPanel) game.getContentPane();
+		cpanel.setPreferredSize(new Dimension(64 * PIXEL_SIZE, 32 * PIXEL_SIZE));
 		
-		GameCanvas canvas = new GameCanvas();
-		canvas.setBounds(0, 0, 64 * 8, 32 * 8);
-		panel.add(canvas);
+	    AudioInputStream stream;
+	    AudioFormat format;
+	    DataLine.Info info;
+	    Clip clip = null;
+	    
+		try {
+		    File beep = new File("beep.aiff");
+
+		    stream = AudioSystem.getAudioInputStream(beep);
+		    format = stream.getFormat();
+		    info = new DataLine.Info(Clip.class, format);
+		    clip = (Clip) AudioSystem.getLine(info);
+		    clip.open(stream);
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		GamePanel panel = new GamePanel();
+		panel.setBounds(0, 0, 64 * PIXEL_SIZE, 32 * PIXEL_SIZE);
+		cpanel.add(panel);
 		
 		game.pack();
 		game.setVisible(true);
@@ -156,10 +180,19 @@ public class Chip8_Emu
 			long startTime = System.currentTimeMillis();
 			chip8.tick();
 			
-			if (chip8.drawFlag) {
+			if (chip8.drawFlag)
+			{
 				chip8.drawFlag = false;
-				canvas.gfx = chip8.gfx;
-				canvas.repaint();
+				panel.gfx = chip8.gfx;
+				panel.repaint();
+			}
+			
+			if (chip8.beepFlag)
+			{
+				clip.stop();
+				clip.setMicrosecondPosition(0);
+				chip8.beepFlag = false;
+				clip.start();
 			}
 			
 			try
@@ -173,26 +206,32 @@ public class Chip8_Emu
 		}
 	}
 }
-class GameCanvas extends Canvas
+class GamePanel extends JPanel
 {
 	public byte[] gfx;
-	public GameCanvas()
+	public GamePanel()
 	{
 		gfx = new byte[64 * 48];
 	}
 	@Override
-	public void paint(Graphics g)
+	public void paintComponent(Graphics g)
 	{
-		g.setColor(Color.BLACK);
-		g.fillRect(0, 0, 64 * 8, 32 * 8);
+		BufferedImage bi = new BufferedImage(64 * Chip8_Emu.PIXEL_SIZE, 32 * Chip8_Emu.PIXEL_SIZE, BufferedImage.TYPE_INT_RGB);
 		for (int x = 0; x < 64; x++)
 		{
 			for (int y = 0; y < 32; y++)
 			{
-				g.setColor(Color.BLACK);
-				if (gfx[x + y * 64] != 0) g.setColor(Color.WHITE);
-				g.fillRect(x * 8, y * 8, 8, 8);
+				for (int i = 0; i < Chip8_Emu.PIXEL_SIZE; i++)
+				{
+					for (int j = 0; j < Chip8_Emu.PIXEL_SIZE; j++)
+					{
+						int rgb = 0x000000;
+						if (gfx[x + 64 * y] == 1) rgb = 0xFFFFFF;
+						bi.setRGB(x * Chip8_Emu.PIXEL_SIZE + i, y * Chip8_Emu.PIXEL_SIZE + j, rgb);
+					}
+				}
 			}
 		}
+		g.drawImage(bi, 0, 0, null);
 	}
 }
